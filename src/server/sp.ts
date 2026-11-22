@@ -1,24 +1,55 @@
 import { createServerFn } from '@tanstack/react-start'
 import { db, type ObatRow } from '#/db'
 
+const ALLOWED_SORT_COLUMNS = ['kode', 'nama', 'stok', 'stok_min', 'pabrik', 'suplier'] as const
+type SortColumn = (typeof ALLOWED_SORT_COLUMNS)[number]
+
 export const getLowStockObat = createServerFn({ method: 'GET' })
-  .validator((data: { page?: number; pageSize?: number } | undefined) => data ?? {})
+  .validator(
+    (
+      data:
+        | {
+            page?: number
+            pageSize?: number
+            sortBy?: string
+            sortOrder?: 'asc' | 'desc'
+            supplier?: string
+          }
+        | undefined,
+    ) => data ?? {},
+  )
   .handler(async ({ data }) => {
     const page = Math.max(1, data.page ?? 1)
     const pageSize = Math.min(100, Math.max(10, data.pageSize ?? 20))
     const offset = (page - 1) * pageSize
 
-    const total = db.prepare(`
-      SELECT COUNT(*) as count FROM obat
-      WHERE CAST(stok AS REAL) < CAST(stok_min AS REAL)
-    `).get() as { count: number }
+    const sortBy: SortColumn = ALLOWED_SORT_COLUMNS.includes(data.sortBy as SortColumn)
+      ? (data.sortBy as SortColumn)
+      : 'nama'
+    const sortOrder = data.sortOrder === 'desc' ? 'DESC' : 'ASC'
 
-    const rows = db.prepare<[], ObatRow>(`
+    let whereClause = `WHERE CAST(stok AS REAL) < CAST(stok_min AS REAL)`
+    const params: (string | number)[] = []
+
+    if (data.supplier) {
+      if (data.supplier === 'Tanpa Supplier') {
+        whereClause += ` AND (suplier IS NULL OR suplier = '')`
+      } else {
+        whereClause += ` AND suplier = ?`
+        params.push(data.supplier)
+      }
+    }
+
+    const totalStmt = db.prepare(`SELECT COUNT(*) as count FROM obat ${whereClause}`)
+    const total = totalStmt.get(...params) as { count: number }
+
+    const rowsStmt = db.prepare<[], ObatRow>(`
       SELECT * FROM obat
-      WHERE CAST(stok AS REAL) < CAST(stok_min AS REAL)
-      ORDER BY pabrik, nama
+      ${whereClause}
+      ORDER BY ${sortBy} ${sortOrder}
       LIMIT ? OFFSET ?
-    `).all(pageSize, offset)
+    `)
+    const rows = rowsStmt.all(...params, pageSize, offset)
 
     return {
       items: rows,
@@ -28,6 +59,21 @@ export const getLowStockObat = createServerFn({ method: 'GET' })
       totalPages: Math.ceil(total.count / pageSize),
     }
   })
+
+export const getLowStockSuppliers = createServerFn({ method: 'GET' }).handler(async () => {
+  const rows = db
+    .prepare(
+      `
+      SELECT DISTINCT suplier FROM obat
+      WHERE CAST(stok AS REAL) < CAST(stok_min AS REAL)
+      ORDER BY suplier
+    `,
+    )
+    .all() as { suplier: string | null }[]
+
+  const suppliers = rows.map((r) => r.suplier || 'Tanpa Supplier')
+  return [...new Set(suppliers)].sort((a, b) => a.localeCompare(b))
+})
 
 export const addToDraft = createServerFn({ method: 'POST' })
   .validator((data: { kode: string; nama: string; pabrik: string | null; suplier: string | null }) => data)

@@ -1,20 +1,39 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getLowStockObat, addToDraft } from '#/server/sp'
+import { getLowStockObat, getLowStockSuppliers, addToDraft } from '#/server/sp'
 import { useState } from 'react'
 
 export const Route = createFileRoute('/sp/low-stock')({
   component: LowStockPage,
 })
 
+type SortColumn = 'kode' | 'nama' | 'stok' | 'stok_min' | 'pabrik' | 'suplier'
+
 function LowStockPage() {
   const queryClient = useQueryClient()
   const [page, setPage] = useState(1)
+  const [sortBy, setSortBy] = useState<SortColumn>('nama')
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+  const [supplierFilter, setSupplierFilter] = useState<string>('')
   const pageSize = 20
 
   const { data, isLoading } = useQuery({
-    queryKey: ['low-stock', page, pageSize],
-    queryFn: () => getLowStockObat({ data: { page, pageSize } }),
+    queryKey: ['low-stock', page, pageSize, sortBy, sortOrder, supplierFilter],
+    queryFn: () =>
+      getLowStockObat({
+        data: {
+          page,
+          pageSize,
+          sortBy,
+          sortOrder,
+          supplier: supplierFilter || undefined,
+        },
+      }),
+  })
+
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ['low-stock-suppliers'],
+    queryFn: () => getLowStockSuppliers(),
   })
 
   const obat = data?.items ?? []
@@ -38,6 +57,26 @@ function LowStockPage() {
     },
   })
 
+  const handleSort = (column: SortColumn) => {
+    if (sortBy === column) {
+      setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(column)
+      setSortOrder('asc')
+    }
+    setPage(1)
+  }
+
+  const handleSupplierChange = (value: string) => {
+    setSupplierFilter(value)
+    setPage(1)
+  }
+
+  const SortIcon = ({ column }: { column: SortColumn }) => {
+    if (sortBy !== column) return <span className="ml-1 text-gray-400">↕</span>
+    return <span className="ml-1">{sortOrder === 'asc' ? '↑' : '↓'}</span>
+  }
+
   if (isLoading) return <div className="p-6">Memuat data stok rendah...</div>
 
   return (
@@ -46,6 +85,22 @@ function LowStockPage() {
       <p className="mb-4 text-sm text-gray-600">
         Pilih obat untuk ditambahkan ke draft Surat Pemesanan. Menampilkan {total} obat.
       </p>
+
+      <div className="mb-4 flex items-center gap-4">
+        <label className="text-sm font-medium">Filter by Supplier:</label>
+        <select
+          value={supplierFilter}
+          onChange={(e) => handleSupplierChange(e.target.value)}
+          className="rounded border px-3 py-1.5 text-sm"
+        >
+          <option value="">Semua Supplier</option>
+          {suppliers.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
+      </div>
 
       {obat.length === 0 ? (
         <div className="rounded border border-dashed p-8 text-center text-gray-500">
@@ -57,12 +112,42 @@ function LowStockPage() {
             <table className="min-w-full text-sm">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-3 py-2 text-left">Kode</th>
-                  <th className="px-3 py-2 text-left">Nama</th>
-                  <th className="px-3 py-2 text-left">Stok</th>
-                  <th className="px-3 py-2 text-left">Min</th>
-                  <th className="px-3 py-2 text-left">Pabrik</th>
-                  <th className="px-3 py-2 text-left">Supplier</th>
+                  <th
+                    className="cursor-pointer px-3 py-2 text-left hover:bg-gray-100"
+                    onClick={() => handleSort('kode')}
+                  >
+                    Kode <SortIcon column="kode" />
+                  </th>
+                  <th
+                    className="cursor-pointer px-3 py-2 text-left hover:bg-gray-100"
+                    onClick={() => handleSort('nama')}
+                  >
+                    Nama <SortIcon column="nama" />
+                  </th>
+                  <th
+                    className="cursor-pointer px-3 py-2 text-left hover:bg-gray-100"
+                    onClick={() => handleSort('stok')}
+                  >
+                    Stok <SortIcon column="stok" />
+                  </th>
+                  <th
+                    className="cursor-pointer px-3 py-2 text-left hover:bg-gray-100"
+                    onClick={() => handleSort('stok_min')}
+                  >
+                    Min <SortIcon column="stok_min" />
+                  </th>
+                  <th
+                    className="cursor-pointer px-3 py-2 text-left hover:bg-gray-100"
+                    onClick={() => handleSort('pabrik')}
+                  >
+                    Pabrik <SortIcon column="pabrik" />
+                  </th>
+                  <th
+                    className="cursor-pointer px-3 py-2 text-left hover:bg-gray-100"
+                    onClick={() => handleSort('suplier')}
+                  >
+                    Supplier <SortIcon column="suplier" />
+                  </th>
                   <th className="px-3 py-2"></th>
                 </tr>
               </thead>
