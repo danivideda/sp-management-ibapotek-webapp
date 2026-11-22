@@ -191,14 +191,14 @@ function LowStockPage() {
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page <= 1}
-                  className="rounded border px-3 py-1 disabled:opacity-50"
+                  className="rounded border px-3 py-1 hover:bg-gray-100 disabled:opacity-50"
                 >
                   Sebelumnya
                 </button>
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages}
-                  className="rounded border px-3 py-1 disabled:opacity-50"
+                  className="rounded border px-3 py-1 hover:bg-gray-100 disabled:opacity-50"
                 >
                   Berikutnya
                 </button>
