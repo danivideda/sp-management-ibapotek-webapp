@@ -22,6 +22,7 @@ function LowStockPage() {
     }) => addToDraft({ data: payload }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['draft'] })
+      alert('Berhasil ditambahkan ke draft SP. Silakan buka halaman Buat SP.')
     },
     onError: (err) => {
       console.error(err)

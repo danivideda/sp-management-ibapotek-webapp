@@ -9,9 +9,11 @@ export const Route = createFileRoute('/sp/create')({
 
 function CreateSpPage() {
   const queryClient = useQueryClient()
-  const { data: draft = [] } = useQuery({
+  const { data: draft = [], isLoading, refetch } = useQuery({
     queryKey: ['draft'],
     queryFn: () => getDraftItems(),
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   })
 
   const createMutation = useMutation({
@@ -38,12 +40,20 @@ function CreateSpPage() {
     return acc
   }, {})
 
+  if (isLoading) return <div className="p-6">Memuat draft...</div>
+
   return (
     <div className="p-6">
       <h1 className="mb-4 text-2xl font-semibold">Buat Surat Pemesanan</h1>
       <p className="mb-6 text-sm text-gray-600">
         Item dikelompokkan berdasarkan Pabrik. Anda dapat mengubah supplier sebelum membuat SP.
       </p>
+      <button
+        onClick={() => refetch()}
+        className="mb-4 rounded bg-gray-200 px-3 py-1 text-sm hover:bg-gray-300"
+      >
+        Refresh Draft
+      </button>
 
       {Object.keys(grouped).length === 0 ? (
         <div className="rounded border border-dashed p-8 text-center text-gray-500">
