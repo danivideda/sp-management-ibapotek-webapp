@@ -6,7 +6,6 @@ import Database from 'better-sqlite3'
 
 /**
  * Extracts real column names from CREATE TABLE `dobat` (only column definitions, not keys/indexes).
- * Matches `colname` followed by a type identifier.
  */
 function extractDobatColumns(content: string): string[] | null {
   const createMatch = content.match(/CREATE TABLE `dobat`\s*\(([\s\S]*?)\)\s*ENGINE/i)
@@ -14,7 +13,6 @@ function extractDobatColumns(content: string): string[] | null {
 
   const colDefs = createMatch[1]
   const columns: string[] = []
-  // Match `name` followed by whitespace and a type word (varchar, int, decimal, text, etc.)
   const colRegex = /`([^`]+)`\s+[a-zA-Z]/g
   let m: RegExpExecArray | null
   while ((m = colRegex.exec(colDefs)) !== null) {
@@ -24,90 +22,18 @@ function extractDobatColumns(content: string): string[] | null {
 }
 
 /**
- * Parse SQL VALUES clause into rows of string values.
- * Respects single-quoted strings and basic escapes.
+ * Extract full INSERT INTO `dobat` ... ; statements (handles ; inside strings).
  */
-function parseSqlValues(valuesStr: string): string[][] {
-  const rows: string[][] = []
-  let i = 0
-  const len = valuesStr.length
-
-  while (i < len) {
-    while (i < len && /[\s,]/.test(valuesStr[i])) i++
-    if (i >= len) break
-
-    if (valuesStr[i] !== '(') break
-    i++ // skip (
-
-    const row: string[] = []
-    let inString = false
-    let current = ''
-    let escape = false
-
-    while (i < len) {
-      const c = valuesStr[i]
-
-      if (escape) {
-        current += c
-        escape = false
-        i++
-        continue
-      }
-
-      if (c === '\\' && inString) {
-        escape = true
-        i++
-        continue
-      }
-
-      if (c === "'") {
-        if (inString && valuesStr[i + 1] === "'") {
-          current += "'"
-          i += 2
-          continue
-        }
-        inString = !inString
-        i++
-        continue
-      }
-
-      if (!inString && c === ',') {
-        row.push(current.trim())
-        current = ''
-        i++
-        continue
-      }
-
-      if (!inString && c === ')') {
-        row.push(current.trim())
-        rows.push(row)
-        i++
-        break
-      }
-
-      current += c
-      i++
-    }
-  }
-
-  return rows
-}
-
-/**
- * Find the start of all INSERT INTO `dobat` VALUES sections and extract their values strings
- * more carefully (stop at ; outside of strings).
- */
-function extractInsertValues(content: string): string[] {
+function extractInsertStatements(content: string): string[] {
   const results: string[] = []
-  const insertRegex = /INSERT INTO `dobat` VALUES\s*/gi
+  const insertRegex = /INSERT INTO `dobat`\s+VALUES\s*/gi
   let match: RegExpExecArray | null
 
   while ((match = insertRegex.exec(content)) !== null) {
-    let i = match.index + match[0].length
+    let i = match.index
     const len = content.length
     let inString = false
     let escape = false
-    const start = i
 
     while (i < len) {
       const c = content[i]
@@ -135,7 +61,7 @@ function extractInsertValues(content: string): string[] {
       }
 
       if (!inString && c === ';') {
-        results.push(content.slice(start, i))
+        results.push(content.slice(match.index, i + 1))
         break
       }
 
@@ -156,6 +82,14 @@ function findCol(columns: string[] | null, names: string[]): number {
   return -1
 }
 
+/**
+ * Minimal adaptation of MySQL INSERT to SQLite-compatible SQL.
+ * Removes backticks and leaves the VALUES as-is (SQLite is flexible).
+ */
+function adaptInsertForSqlite(stmt: string): string {
+  return stmt.replace(/INSERT INTO `dobat`/gi, 'INSERT INTO dobat')
+}
+
 export const importFromSqlDump = createServerFn({ method: 'POST' })
   .validator((data: { filePath?: string }) => data)
   .handler(async ({ data }) => {
@@ -171,39 +105,29 @@ export const importFromSqlDump = createServerFn({ method: 'POST' })
       return { success: false, error: 'Could not extract columns from CREATE TABLE `dobat`' }
     }
 
-    const insertValueBlocks = extractInsertValues(content)
-    if (insertValueBlocks.length === 0) {
+    const insertStatements = extractInsertStatements(content)
+    if (insertStatements.length === 0) {
       return { success: false, error: 'No dobat INSERT found in dump' }
     }
 
-    // Load into a temporary in-memory SQLite database so we can query by column name
+    // Temporary in-memory SQLite — let SQLite parse the data
     const tempDb = new Database(':memory:')
     const colList = columns.map((c) => `"${c}" TEXT`).join(', ')
     tempDb.exec(`CREATE TABLE dobat (${colList})`)
 
-    const placeholders = columns.map(() => '?').join(', ')
-    const insertTemp = tempDb.prepare(`INSERT INTO dobat VALUES (${placeholders})`)
-
-    let parsedRows = 0
-    for (const valuesStr of insertValueBlocks) {
-      const rows = parseSqlValues(valuesStr)
-      for (const row of rows) {
-        if (row.length !== columns.length) {
-          // skip misaligned rows
-          continue
-        }
-        // Convert literal 'NULL' to null
-        const values = row.map((v) => (v.toUpperCase() === 'NULL' ? null : v))
-        try {
-          insertTemp.run(...values)
-          parsedRows++
-        } catch {
-          // skip
-        }
+    let executed = 0
+    for (const stmt of insertStatements) {
+      try {
+        const adapted = adaptInsertForSqlite(stmt)
+        tempDb.exec(adapted)
+        executed++
+      } catch (e) {
+        // continue with other statements if one fails
+        console.error('Failed to exec insert statement:', e)
       }
     }
 
-    // Now query the needed columns by name from the temp table
+    // Query by column name
     const idxKode = findCol(columns, ['kode', 'kode_obat', 'kd_obat'])
     const idxNama = findCol(columns, ['nama', 'nama_obat', 'nm_obat'])
     const idxKategori = findCol(columns, ['kategori', 'kategori_obat', 'jenis'])
@@ -220,31 +144,18 @@ export const importFromSqlDump = createServerFn({ method: 'POST' })
       return { success: false, error: 'Column "kode" not found in dobat' }
     }
 
-    const selectCols = [
-      columns[idxKode],
-      idxNama >= 0 ? columns[idxNama] : "''",
-      idxKategori >= 0 ? columns[idxKategori] : 'NULL',
-      idxStok >= 0 ? columns[idxStok] : '0',
-      idxStokMin >= 0 ? columns[idxStokMin] : '0',
-      idxSatuan >= 0 ? columns[idxSatuan] : 'NULL',
-      idxHarga >= 0 ? columns[idxHarga] : '0',
-      idxSuplier >= 0 ? columns[idxSuplier] : 'NULL',
-      idxPabrik >= 0 ? columns[idxPabrik] : 'NULL',
-      idxLokasi >= 0 ? columns[idxLokasi] : 'NULL',
-    ]
-
     const selectSql = `
       SELECT
-        "${selectCols[0]}" as kode,
-        ${idxNama >= 0 ? `"${selectCols[1]}"` : "''"} as nama,
-        ${idxKategori >= 0 ? `"${selectCols[2]}"` : 'NULL'} as kategori,
-        ${idxStok >= 0 ? `"${selectCols[3]}"` : '0'} as stok,
-        ${idxStokMin >= 0 ? `"${selectCols[4]}"` : '0'} as stok_min,
-        ${idxSatuan >= 0 ? `"${selectCols[5]}"` : 'NULL'} as satuan_beli,
-        ${idxHarga >= 0 ? `"${selectCols[6]}"` : '0'} as harga_beli,
-        ${idxSuplier >= 0 ? `"${selectCols[7]}"` : 'NULL'} as suplier,
-        ${idxPabrik >= 0 ? `"${selectCols[8]}"` : 'NULL'} as pabrik,
-        ${idxLokasi >= 0 ? `"${selectCols[9]}"` : 'NULL'} as lokasi
+        "${columns[idxKode]}" as kode,
+        ${idxNama >= 0 ? `"${columns[idxNama]}"` : "''"} as nama,
+        ${idxKategori >= 0 ? `"${columns[idxKategori]}"` : 'NULL'} as kategori,
+        ${idxStok >= 0 ? `"${columns[idxStok]}"` : '0'} as stok,
+        ${idxStokMin >= 0 ? `"${columns[idxStokMin]}"` : '0'} as stok_min,
+        ${idxSatuan >= 0 ? `"${columns[idxSatuan]}"` : 'NULL'} as satuan_beli,
+        ${idxHarga >= 0 ? `"${columns[idxHarga]}"` : '0'} as harga_beli,
+        ${idxSuplier >= 0 ? `"${columns[idxSuplier]}"` : 'NULL'} as suplier,
+        ${idxPabrik >= 0 ? `"${columns[idxPabrik]}"` : 'NULL'} as pabrik,
+        ${idxLokasi >= 0 ? `"${columns[idxLokasi]}"` : 'NULL'} as lokasi
       FROM dobat
       WHERE "${columns[idxKode]}" IS NOT NULL AND "${columns[idxKode]}" != ''
     `
@@ -261,6 +172,23 @@ export const importFromSqlDump = createServerFn({ method: 'POST' })
       pabrik: string | null
       lokasi: string | null
     }>
+
+    // Debug helper: look up the specific problem row if present
+    let ok000211Debug: { kode?: string; suplier?: string | null; columns?: string[] } | null = null
+    try {
+      const debugRow = tempDb
+        .prepare(`SELECT * FROM dobat WHERE "${columns[idxKode]}" = 'OK000211'`)
+        .get() as Record<string, unknown> | undefined
+      if (debugRow) {
+        ok000211Debug = {
+          kode: String(debugRow[columns[idxKode]] ?? ''),
+          suplier: idxSuplier >= 0 ? (debugRow[columns[idxSuplier]] as string | null) : null,
+          columns,
+        }
+      }
+    } catch {
+      // ignore
+    }
 
     tempDb.close()
 
@@ -294,11 +222,12 @@ export const importFromSqlDump = createServerFn({ method: 'POST' })
       success: true,
       imported: count,
       columnsFound: columns.length,
-      parsedRows,
+      insertStatementsExecuted: executed,
       mapped: {
         suplier: idxSuplier >= 0 ? columns[idxSuplier] : 'not found',
         pabrik: idxPabrik >= 0 ? columns[idxPabrik] : 'not found',
         kode: columns[idxKode],
       },
+      debugOk000211: ok000211Debug,
     }
   })
