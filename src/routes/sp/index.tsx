@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
-import { SuratPemesanan } from '#/types/sp'
+import type { SuratPemesanan } from '../../types/sp'
 
 export const Route = createFileRoute('/sp/')({
   component: SpListPage,
