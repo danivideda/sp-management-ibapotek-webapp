@@ -15,10 +15,18 @@ function CreateSpPage() {
   })
 
   const createMutation = useMutation({
-    mutationFn: createSpFromDraft,
+    mutationFn: (payload: {
+      pabrik: string
+      suplier: string
+      items: Array<{ kode: string; nama: string; qty: number }>
+    }) => createSpFromDraft({ data: payload }),
     onSuccess: (res) => {
       alert(`SP berhasil dibuat: ${res.number}`)
       queryClient.invalidateQueries({ queryKey: ['draft'] })
+    },
+    onError: (err) => {
+      console.error(err)
+      alert('Gagal membuat SP')
     },
   })
 

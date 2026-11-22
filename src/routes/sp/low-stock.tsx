@@ -14,9 +14,18 @@ function LowStockPage() {
   })
 
   const addMutation = useMutation({
-    mutationFn: addToDraft,
+    mutationFn: (payload: {
+      kode: string
+      nama: string
+      pabrik: string | null
+      suplier: string | null
+    }) => addToDraft({ data: payload }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['draft'] })
+    },
+    onError: (err) => {
+      console.error(err)
+      alert('Gagal menambahkan ke draft')
     },
   })
 
@@ -66,9 +75,10 @@ function LowStockPage() {
                           suplier: o.suplier,
                         })
                       }
-                      className="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700"
+                      disabled={addMutation.isPending}
+                      className="rounded bg-blue-600 px-3 py-1 text-xs text-white hover:bg-blue-700 disabled:opacity-50"
                     >
-                      Tambah ke SP
+                      {addMutation.isPending ? 'Menambahkan...' : 'Tambah ke SP'}
                     </button>
                   </td>
                 </tr>
