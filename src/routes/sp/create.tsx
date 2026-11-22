@@ -1,6 +1,12 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { getDraftItems, createSpFromDraft } from '#/server/sp'
+import {
+  getDraftItems,
+  createSpFromDraft,
+  deleteDraftItem,
+  deleteDraftBySupplier,
+  clearAllDraft,
+} from '#/server/sp'
 import { useState } from 'react'
 
 export const Route = createFileRoute('/sp/create')({
@@ -18,9 +24,9 @@ function CreateSpPage() {
 
   const createMutation = useMutation({
     mutationFn: (payload: {
-      pabrik: string
       suplier: string
       items: Array<{ kode: string; nama: string; qty: number }>
+      pabrik?: string | null
     }) => createSpFromDraft({ data: payload }),
     onSuccess: (res) => {
       alert(`SP berhasil dibuat: ${res.number}`)
@@ -32,9 +38,33 @@ function CreateSpPage() {
     },
   })
 
-  // Group by pabrik
+  const deleteItemMutation = useMutation({
+    mutationFn: (id: number) => deleteDraftItem({ data: { id } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['draft'] })
+    },
+    onError: () => alert('Gagal menghapus item'),
+  })
+
+  const deleteBySupplierMutation = useMutation({
+    mutationFn: (suplier: string) => deleteDraftBySupplier({ data: { suplier } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['draft'] })
+    },
+    onError: () => alert('Gagal menghapus item supplier'),
+  })
+
+  const clearAllMutation = useMutation({
+    mutationFn: () => clearAllDraft(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['draft'] })
+    },
+    onError: () => alert('Gagal mengosongkan draft'),
+  })
+
+  // Group by supplier
   const grouped = draft.reduce((acc: Record<string, any[]>, item: any) => {
-    const key = item.pabrik || 'Tanpa Pabrik'
+    const key = item.suplier || 'Tanpa Supplier'
     if (!acc[key]) acc[key] = []
     acc[key].push(item)
     return acc
@@ -44,9 +74,24 @@ function CreateSpPage() {
 
   return (
     <div className="p-6">
-      <h1 className="mb-4 text-2xl font-semibold">Buat Surat Pemesanan</h1>
+      <div className="mb-4 flex items-center justify-between">
+        <h1 className="text-2xl font-semibold">Buat Surat Pemesanan</h1>
+        {Object.keys(grouped).length > 0 && (
+          <button
+            onClick={() => {
+              if (confirm('Hapus semua item dari draft?')) {
+                clearAllMutation.mutate()
+              }
+            }}
+            disabled={clearAllMutation.isPending}
+            className="rounded bg-red-600 px-3 py-1 text-sm text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {clearAllMutation.isPending ? 'Menghapus...' : 'Clear All Draft'}
+          </button>
+        )}
+      </div>
       <p className="mb-6 text-sm text-gray-600">
-        Item dikelompokkan berdasarkan Pabrik. Anda dapat mengubah supplier sebelum membuat SP.
+        Item dikelompokkan berdasarkan Supplier. Anda dapat mengubah supplier sebelum membuat SP.
       </p>
       <button
         onClick={() => refetch()}
@@ -60,18 +105,26 @@ function CreateSpPage() {
           Draft kosong. Tambahkan obat dari halaman Stok Rendah.
         </div>
       ) : (
-        Object.entries(grouped).map(([pabrik, items]) => (
+        Object.entries(grouped).map(([suplier, items]) => (
           <GroupCard
-            key={pabrik}
-            pabrik={pabrik}
+            key={suplier}
+            suplier={suplier}
             items={items}
-            onCreate={(suplier) =>
+            onCreate={(finalSuplier) =>
               createMutation.mutate({
-                pabrik,
-                suplier,
+                suplier: finalSuplier,
                 items: items.map((i: any) => ({ kode: i.kode_obat, nama: i.nama, qty: i.qty })),
+                pabrik: items[0]?.pabrik ?? null,
               })
             }
+            onDeleteItem={(id) => deleteItemMutation.mutate(id)}
+            onDeleteAll={() => {
+              if (confirm(`Hapus semua item untuk supplier "${suplier}"?`)) {
+                deleteBySupplierMutation.mutate(suplier)
+              }
+            }}
+            isDeletingItem={deleteItemMutation.isPending}
+            isDeletingAll={deleteBySupplierMutation.isPending}
           />
         ))
       )}
@@ -79,26 +132,49 @@ function CreateSpPage() {
   )
 }
 
-function GroupCard({ pabrik, items, onCreate }: { pabrik: string; items: any[]; onCreate: (suplier: string) => void }) {
-  const [suplier, setSuplier] = useState(items[0]?.suplier || '')
+function GroupCard({
+  suplier,
+  items,
+  onCreate,
+  onDeleteItem,
+  onDeleteAll,
+  isDeletingItem,
+  isDeletingAll,
+}: {
+  suplier: string
+  items: any[]
+  onCreate: (suplier: string) => void
+  onDeleteItem: (id: number) => void
+  onDeleteAll: () => void
+  isDeletingItem: boolean
+  isDeletingAll: boolean
+}) {
+  const [editSuplier, setEditSuplier] = useState(suplier === 'Tanpa Supplier' ? '' : suplier)
 
   return (
     <div className="mb-6 rounded-lg border p-4">
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-lg font-medium">Pabrik: {pabrik}</h2>
-        <div className="flex items-center gap-2">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-lg font-medium">Supplier: {suplier}</h2>
+        <div className="flex flex-wrap items-center gap-2">
           <label className="text-sm">Supplier:</label>
           <input
-            value={suplier}
-            onChange={(e) => setSuplier(e.target.value)}
+            value={editSuplier}
+            onChange={(e) => setEditSuplier(e.target.value)}
             className="rounded border px-2 py-1 text-sm"
             placeholder="Ubah supplier"
           />
           <button
-            onClick={() => onCreate(suplier)}
+            onClick={() => onCreate(editSuplier || suplier)}
             className="rounded bg-green-600 px-3 py-1 text-sm text-white hover:bg-green-700"
           >
-            Buat SP untuk Pabrik ini
+            Buat SP untuk Supplier ini
+          </button>
+          <button
+            onClick={onDeleteAll}
+            disabled={isDeletingAll}
+            className="rounded bg-orange-600 px-3 py-1 text-sm text-white hover:bg-orange-700 disabled:opacity-50"
+          >
+            {isDeletingAll ? 'Menghapus...' : 'Hapus Semua'}
           </button>
         </div>
       </div>
@@ -108,6 +184,7 @@ function GroupCard({ pabrik, items, onCreate }: { pabrik: string; items: any[]; 
             <th className="pb-1">Kode</th>
             <th className="pb-1">Nama</th>
             <th className="pb-1">Qty</th>
+            <th className="pb-1 text-right">Aksi</th>
           </tr>
         </thead>
         <tbody>
@@ -116,6 +193,15 @@ function GroupCard({ pabrik, items, onCreate }: { pabrik: string; items: any[]; 
               <td className="py-1">{item.kode_obat}</td>
               <td className="py-1">{item.nama}</td>
               <td className="py-1">{item.qty}</td>
+              <td className="py-1 text-right">
+                <button
+                  onClick={() => onDeleteItem(item.id)}
+                  disabled={isDeletingItem}
+                  className="rounded bg-red-500 px-2 py-0.5 text-xs text-white hover:bg-red-600 disabled:opacity-50"
+                >
+                  Hapus
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
