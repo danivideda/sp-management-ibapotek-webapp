@@ -1,14 +1,33 @@
 import { createServerFn } from '@tanstack/react-start'
 import { db, type ObatRow } from '#/db'
 
-export const getLowStockObat = createServerFn({ method: 'GET' }).handler(async () => {
-  const rows = db.prepare<[], ObatRow>(`
-    SELECT * FROM obat
-    WHERE CAST(stok AS REAL) < CAST(stok_min AS REAL)
-    ORDER BY pabrik, nama
-  `).all()
-  return rows
-})
+export const getLowStockObat = createServerFn({ method: 'GET' })
+  .validator((data: { page?: number; pageSize?: number } | undefined) => data ?? {})
+  .handler(async ({ data }) => {
+    const page = Math.max(1, data.page ?? 1)
+    const pageSize = Math.min(100, Math.max(10, data.pageSize ?? 20))
+    const offset = (page - 1) * pageSize
+
+    const total = db.prepare(`
+      SELECT COUNT(*) as count FROM obat
+      WHERE CAST(stok AS REAL) < CAST(stok_min AS REAL)
+    `).get() as { count: number }
+
+    const rows = db.prepare<[], ObatRow>(`
+      SELECT * FROM obat
+      WHERE CAST(stok AS REAL) < CAST(stok_min AS REAL)
+      ORDER BY pabrik, nama
+      LIMIT ? OFFSET ?
+    `).all(pageSize, offset)
+
+    return {
+      items: rows,
+      page,
+      pageSize,
+      total: total.count,
+      totalPages: Math.ceil(total.count / pageSize),
+    }
+  })
 
 export const addToDraft = createServerFn({ method: 'POST' })
   .validator((data: { kode: string; nama: string; pabrik: string | null; suplier: string | null }) => data)
