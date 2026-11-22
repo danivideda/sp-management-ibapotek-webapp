@@ -1,0 +1,49 @@
+import { createServerFn } from '@tanstack/react-start'
+import { db, type ObatRow } from '#/db'
+
+export const getLowStockObat = createServerFn({ method: 'GET' }).handler(async () => {
+  const rows = db.prepare<[], ObatRow>(`
+    SELECT * FROM obat
+    WHERE CAST(stok AS REAL) < CAST(stok_min AS REAL)
+    ORDER BY pabrik, nama
+  `).all()
+  return rows
+})
+
+export const addToDraft = createServerFn({ method: 'POST' })
+  .validator((data: { kode: string; nama: string; pabrik: string | null; suplier: string | null }) => data)
+  .handler(async ({ data }) => {
+    db.prepare(`
+      INSERT INTO sp_draft (kode_obat, nama, pabrik, suplier)
+      VALUES (?, ?, ?, ?)
+    `).run(data.kode, data.nama, data.pabrik, data.suplier)
+    return { success: true }
+  })
+
+export const getDraftItems = createServerFn({ method: 'GET' }).handler(async () => {
+  return db.prepare(`SELECT * FROM sp_draft ORDER BY pabrik, nama`).all()
+})
+
+export const createSpFromDraft = createServerFn({ method: 'POST' })
+  .validator((data: { pabrik: string; suplier: string; items: Array<{ kode: string; nama: string; qty: number }> }) => data)
+  .handler(async ({ data }) => {
+    const id = crypto.randomUUID()
+    const number = `SP-${Date.now()}`
+    db.prepare(`
+      INSERT INTO surat_pemesanan (id, number, date, pabrik, suplier, status)
+      VALUES (?, ?, date('now'), ?, ?, 'draft')
+    `).run(id, number, data.pabrik, data.suplier)
+
+    const insertItem = db.prepare(`
+      INSERT INTO sp_items (sp_id, kode_obat, nama, qty, unit, price)
+      VALUES (?, ?, ?, ?, 'Pcs', 0)
+    `)
+    for (const item of data.items) {
+      insertItem.run(id, item.kode, item.nama, item.qty)
+    }
+
+    // Clear draft for this pabrik
+    db.prepare(`DELETE FROM sp_draft WHERE pabrik = ?`).run(data.pabrik)
+
+    return { id, number }
+  })
