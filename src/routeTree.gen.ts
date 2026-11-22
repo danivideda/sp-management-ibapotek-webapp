@@ -12,6 +12,11 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AboutRouteImport } from './routes/about'
 import { Route as DemoTanstackQueryRouteImport } from './routes/demo/tanstack-query'
+import { Route as SpIndexRouteImport } from './routes/sp/index'
+import { Route as SpCreateRouteImport } from './routes/sp/create'
+import { Route as SpImportRouteImport } from './routes/sp/import'
+import { Route as SpLowStockRouteImport } from './routes/sp/low-stock'
+import { Route as SpNewRouteImport } from './routes/sp/new'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -28,35 +33,105 @@ const DemoTanstackQueryRoute = DemoTanstackQueryRouteImport.update({
   path: '/demo/tanstack-query',
   getParentRoute: () => rootRouteImport,
 } as any)
+const SpIndexRoute = SpIndexRouteImport.update({
+  id: '/sp/',
+  path: '/sp/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SpCreateRoute = SpCreateRouteImport.update({
+  id: '/sp/create',
+  path: '/sp/create',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SpImportRoute = SpImportRouteImport.update({
+  id: '/sp/import',
+  path: '/sp/import',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SpLowStockRoute = SpLowStockRouteImport.update({
+  id: '/sp/low-stock',
+  path: '/sp/low-stock',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const SpNewRoute = SpNewRouteImport.update({
+  id: '/sp/new',
+  path: '/sp/new',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/sp/create': typeof SpCreateRoute
+  '/sp/import': typeof SpImportRoute
+  '/sp/low-stock': typeof SpLowStockRoute
+  '/sp/new': typeof SpNewRoute
+  '/sp/': typeof SpIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/sp/create': typeof SpCreateRoute
+  '/sp/import': typeof SpImportRoute
+  '/sp/low-stock': typeof SpLowStockRoute
+  '/sp/new': typeof SpNewRoute
+  '/sp': typeof SpIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/about': typeof AboutRoute
   '/demo/tanstack-query': typeof DemoTanstackQueryRoute
+  '/sp/create': typeof SpCreateRoute
+  '/sp/import': typeof SpImportRoute
+  '/sp/low-stock': typeof SpLowStockRoute
+  '/sp/new': typeof SpNewRoute
+  '/sp/': typeof SpIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/about' | '/demo/tanstack-query'
+  fullPaths:
+    | '/'
+    | '/about'
+    | '/demo/tanstack-query'
+    | '/sp/create'
+    | '/sp/import'
+    | '/sp/low-stock'
+    | '/sp/new'
+    | '/sp/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/about' | '/demo/tanstack-query'
-  id: '__root__' | '/' | '/about' | '/demo/tanstack-query'
+  to:
+    | '/'
+    | '/about'
+    | '/demo/tanstack-query'
+    | '/sp/create'
+    | '/sp/import'
+    | '/sp/low-stock'
+    | '/sp/new'
+    | '/sp'
+  id:
+    | '__root__'
+    | '/'
+    | '/about'
+    | '/demo/tanstack-query'
+    | '/sp/create'
+    | '/sp/import'
+    | '/sp/low-stock'
+    | '/sp/new'
+    | '/sp/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AboutRoute: typeof AboutRoute
   DemoTanstackQueryRoute: typeof DemoTanstackQueryRoute
+  SpCreateRoute: typeof SpCreateRoute
+  SpImportRoute: typeof SpImportRoute
+  SpLowStockRoute: typeof SpLowStockRoute
+  SpNewRoute: typeof SpNewRoute
+  SpIndexRoute: typeof SpIndexRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -82,6 +157,41 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof DemoTanstackQueryRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/sp/': {
+      id: '/sp/'
+      path: '/sp'
+      fullPath: '/sp/'
+      preLoaderRoute: typeof SpIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sp/create': {
+      id: '/sp/create'
+      path: '/sp/create'
+      fullPath: '/sp/create'
+      preLoaderRoute: typeof SpCreateRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sp/import': {
+      id: '/sp/import'
+      path: '/sp/import'
+      fullPath: '/sp/import'
+      preLoaderRoute: typeof SpImportRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sp/low-stock': {
+      id: '/sp/low-stock'
+      path: '/sp/low-stock'
+      fullPath: '/sp/low-stock'
+      preLoaderRoute: typeof SpLowStockRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/sp/new': {
+      id: '/sp/new'
+      path: '/sp/new'
+      fullPath: '/sp/new'
+      preLoaderRoute: typeof SpNewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -89,6 +199,11 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AboutRoute: AboutRoute,
   DemoTanstackQueryRoute: DemoTanstackQueryRoute,
+  SpCreateRoute: SpCreateRoute,
+  SpImportRoute: SpImportRoute,
+  SpLowStockRoute: SpLowStockRoute,
+  SpNewRoute: SpNewRoute,
+  SpIndexRoute: SpIndexRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
